@@ -1,7 +1,16 @@
-# Reference only. TrainX generates the real dataset.yaml for every run.
-# This example is for a PERSON DETECTION dataset with one class.
-#
-# train: /trainx/workspaces/<project>/<dataset_id>/train_split.txt
-# val: /trainx/workspaces/<project>/<dataset_id>/val_split.txt
-# nc: 1
-# names: ["person"]
+# ============================================================
+# TrainX Dataset Configuration
+# ============================================================
+# Reference only.
+# TrainX generates the actual dataset.yaml for every run.
+# ============================================================
+
+#train: /trainx/workspaces/<project>/<dataset_id>/train_split.txt
+
+#val: /trainx/workspaces/<project>/<dataset_id>/val_split.txt
+
+#nc: 2
+
+#names:
+#  - male
+# - female
