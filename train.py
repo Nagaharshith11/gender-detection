@@ -1,26 +1,28 @@
 ```python
 """
-TrainX training entry point for a YOLO person/gender detector.
+TrainX training entry point for a YOLO detector.
 
-The TrainX orchestrator invokes this file with:
+This script is called by the TrainX orchestrator with:
 
-    --img --batch --epochs --data --weights --project --name
-    --seed --exist-ok
+    --img
+    --batch
+    --epochs
+    --data
+    --weights
+    --project
+    --name
+    --seed
+    --exist-ok
 
-The script uses Ultralytics YOLO and writes the artifacts required
-by TrainX:
+The script uses Ultralytics YOLO and produces the artifacts
+expected by TrainX:
 
     <project>/<name>/results.csv
     <project>/<name>/weights/best.pt
-    <project>/<name>/weights/last.pt   (when produced)
+    <project>/<name>/weights/last.pt
 
-Important:
-- Dataset paths are NOT hard-coded.
-- Labels/classes are NOT hard-coded.
-- The dataset.yaml supplied by TrainX is used directly.
-- The model weights supplied by TrainX are used directly.
-- If Ultralytics already writes into the TrainX run directory,
-  artifacts are NOT copied onto themselves.
+The dataset path and class labels are supplied by TrainX.
+They are NOT hard-coded in this script.
 """
 
 import argparse
@@ -33,13 +35,13 @@ from pathlib import Path
 
 
 def parse_args():
-    """Parse arguments supplied by the TrainX orchestrator."""
+    """Parse command-line arguments supplied by TrainX."""
 
-    p = argparse.ArgumentParser(
-        description="TrainX YOLO detector training entry point"
+    parser = argparse.ArgumentParser(
+        description="TrainX YOLO training entry point"
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--img",
         "--imgsz",
         type=int,
@@ -47,7 +49,7 @@ def parse_args():
         help="Training image size",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--batch",
         "--batch-size",
         type=int,
@@ -55,55 +57,55 @@ def parse_args():
         help="Training batch size",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--epochs",
         type=int,
-        default=2,
+        default=50,
         help="Number of training epochs",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--data",
         required=True,
         help="Path to dataset YAML supplied by TrainX",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--weights",
         required=True,
-        help="Initial YOLO model weights",
+        help="Path to initial YOLO weights",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--project",
         required=True,
-        help="Training output project directory",
+        help="Training project/output directory",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--name",
         required=True,
         help="Training run name",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--seed",
         type=int,
         default=0,
         help="Random seed",
     )
 
-    p.add_argument(
+    parser.add_argument(
         "--exist-ok",
         action="store_true",
-        help="Allow an existing output directory",
+        help="Allow existing output directory",
     )
 
-    return p.parse_args()
+    return parser.parse_args()
 
 
 def seed_everything(seed: int) -> None:
-    """Set deterministic/random seeds where possible."""
+    """Set random seeds for reproducible training."""
 
     random.seed(seed)
 
@@ -127,9 +129,8 @@ def seed_everything(seed: int) -> None:
 
 def _num(row, *keys):
     """
-    Read the first available numeric value from a CSV row.
-
-    Returns 0.0 if no usable value is found.
+    Return the first valid numeric value found for the supplied
+    CSV column names.
     """
 
     for key in keys:
@@ -149,28 +150,28 @@ def make_trainx_results(
     output_csv: Path,
 ) -> None:
     """
-    Convert Ultralytics results.csv into the YOLOv5-style columns
+    Convert the Ultralytics results.csv into the metric format
     expected by TrainX.
-
-    Ultralytics column names can vary slightly between versions,
-    so multiple possible names are supported.
     """
 
     if not ultra_csv.exists():
         raise RuntimeError(
-            f"Ultralytics results file was not found: {ultra_csv}"
+            f"Ultralytics results.csv was not found: {ultra_csv}"
         )
 
     with ultra_csv.open(
         "r",
         newline="",
         encoding="utf-8",
-    ) as f:
-        rows = list(csv.DictReader(f))
+    ) as file:
+
+        rows = list(
+            csv.DictReader(file)
+        )
 
     if not rows:
         raise RuntimeError(
-            f"Ultralytics produced an empty results file: {ultra_csv}"
+            f"Ultralytics produced an empty results.csv: {ultra_csv}"
         )
 
     fields = [
@@ -199,10 +200,10 @@ def make_trainx_results(
         "w",
         newline="",
         encoding="utf-8",
-    ) as f:
+    ) as file:
 
         writer = csv.DictWriter(
-            f,
+            file,
             fieldnames=fields,
         )
 
@@ -210,111 +211,112 @@ def make_trainx_results(
 
         for row in rows:
 
-            out = {
-                key: ""
-                for key in fields
+            output = {
+                field: ""
+                for field in fields
             }
 
-            out["epoch"] = row.get(
+            output["epoch"] = row.get(
                 "epoch",
                 "",
             )
 
-            # Training losses
-            out["train/box_loss"] = _num(
+            output["train/box_loss"] = _num(
                 row,
                 "train/box_loss",
             )
 
-            out["train/obj_loss"] = _num(
+            output["train/obj_loss"] = _num(
                 row,
                 "train/obj_loss",
                 "train/dfl_loss",
             )
 
-            out["train/cls_loss"] = _num(
+            output["train/cls_loss"] = _num(
                 row,
                 "train/cls_loss",
             )
 
-            # Detection metrics
-            out["metrics/precision"] = _num(
+            output["metrics/precision"] = _num(
                 row,
                 "metrics/precision(B)",
                 "metrics/precision",
             )
 
-            out["metrics/recall"] = _num(
+            output["metrics/recall"] = _num(
                 row,
                 "metrics/recall(B)",
                 "metrics/recall",
             )
 
-            out["metrics/mAP_0.5"] = _num(
+            output["metrics/mAP_0.5"] = _num(
                 row,
                 "metrics/mAP50(B)",
                 "metrics/mAP_0.5",
             )
 
-            out["metrics/mAP_0.5:0.95"] = _num(
+            output["metrics/mAP_0.5:0.95"] = _num(
                 row,
                 "metrics/mAP50-95(B)",
                 "metrics/mAP_0.5:0.95",
             )
 
-            # Validation losses
-            out["val/box_loss"] = _num(
+            output["val/box_loss"] = _num(
                 row,
                 "val/box_loss",
             )
 
-            out["val/obj_loss"] = _num(
+            output["val/obj_loss"] = _num(
                 row,
                 "val/obj_loss",
                 "val/dfl_loss",
             )
 
-            out["val/cls_loss"] = _num(
+            output["val/cls_loss"] = _num(
                 row,
                 "val/cls_loss",
             )
 
-            # Learning rates
-            out["x/lr0"] = _num(
+            output["x/lr0"] = _num(
                 row,
                 "lr/pg0",
                 "x/lr0",
             )
 
-            out["x/lr1"] = _num(
+            output["x/lr1"] = _num(
                 row,
                 "lr/pg1",
                 "x/lr1",
             )
 
-            out["x/lr2"] = _num(
+            output["x/lr2"] = _num(
                 row,
                 "lr/pg2",
                 "x/lr2",
             )
 
-            writer.writerow(out)
+            writer.writerow(output)
 
 
-def same_file(source: Path, target: Path) -> bool:
+def is_same_file(
+    source: Path,
+    target: Path,
+) -> bool:
     """
-    Safely determine whether source and target refer to the same file.
+    Check whether source and target refer to the same file.
 
-    resolve() is used so that equivalent paths such as:
-        /trainx/runs/a/../a/file.pt
-
-    are treated as the same file.
+    This prevents shutil.SameFileError when Ultralytics has already
+    created the artifact directly inside the TrainX run directory.
     """
 
     try:
         return source.resolve() == target.resolve()
     except OSError:
-        return os.path.abspath(source) == os.path.abspath(target)
+        return os.path.abspath(
+            source
+        ) == os.path.abspath(
+            target
+        )
 
 
 def copy_if_needed(
@@ -322,15 +324,12 @@ def copy_if_needed(
     target: Path,
 ) -> None:
     """
-    Copy a file only when source and target are different files.
-
-    This prevents shutil.SameFileError when Ultralytics has already
-    written the artifact directly into the TrainX run directory.
+    Copy source to target only when they are different files.
     """
 
     if not source.exists():
         raise FileNotFoundError(
-            f"Required source artifact does not exist: {source}"
+            f"Source artifact does not exist: {source}"
         )
 
     target.parent.mkdir(
@@ -338,16 +337,28 @@ def copy_if_needed(
         exist_ok=True,
     )
 
-    if same_file(source, target):
+    if is_same_file(
+        source,
+        target,
+    ):
         print(
-            f"[trainx] Artifact already in target location: {target}"
+            "[trainx] Artifact already exists at target:"
+        )
+        print(
+            f"[trainx] {target}"
         )
         return
 
     print(
-        f"[trainx] Copying artifact:\n"
-        f"         source = {source}\n"
-        f"         target = {target}"
+        "[trainx] Copying artifact:"
+    )
+
+    print(
+        f"[trainx] source = {source}"
+    )
+
+    print(
+        f"[trainx] target = {target}"
     )
 
     shutil.copy2(
@@ -362,20 +373,26 @@ def main():
     args = parse_args()
 
     # ---------------------------------------------------------
-    # 1. Seed
+    # 1. Set random seed
     # ---------------------------------------------------------
 
-    seed_everything(args.seed)
+    seed_everything(
+        args.seed
+    )
 
     # ---------------------------------------------------------
     # 2. Determine TrainX run directory
     # ---------------------------------------------------------
 
-    run_dir = Path(
-        args.project
-    ) / args.name
+    run_dir = (
+        Path(args.project)
+        / args.name
+    )
 
-    if run_dir.exists() and not args.exist_ok:
+    if (
+        run_dir.exists()
+        and not args.exist_ok
+    ):
         raise FileExistsError(
             f"Run directory already exists: {run_dir}"
         )
@@ -386,11 +403,16 @@ def main():
     )
 
     # ---------------------------------------------------------
-    # 3. Validate important input paths
+    # 3. Validate input files
     # ---------------------------------------------------------
 
-    data_path = Path(args.data)
-    weights_path = Path(args.weights)
+    data_path = Path(
+        args.data
+    )
+
+    weights_path = Path(
+        args.weights
+    )
 
     if not data_path.exists():
         raise FileNotFoundError(
@@ -399,7 +421,7 @@ def main():
 
     if not weights_path.exists():
         raise FileNotFoundError(
-            f"Initial model weights were not found: {weights_path}"
+            f"Model weights were not found: {weights_path}"
         )
 
     # ---------------------------------------------------------
@@ -418,46 +440,80 @@ def main():
         )
 
         print(
-            "Install it in the shared venv or coordinate it "
-            "with the MLOps administrator.",
+            "Install ultralytics in the shared training "
+            "environment.",
             file=sys.stderr,
         )
 
         raise SystemExit(1) from exc
 
     # ---------------------------------------------------------
-    # 5. Print configuration
+    # 5. Print training configuration
     # ---------------------------------------------------------
 
     print()
     print("=" * 70)
-    print("[trainx] STARTING YOLO TRAINING")
+    print("Starting YOLO training")
     print("=" * 70)
 
-    print(f"[trainx] data    = {data_path}")
-    print(f"[trainx] weights = {weights_path}")
-    print(f"[trainx] img     = {args.img}")
-    print(f"[trainx] batch   = {args.batch}")
-    print(f"[trainx] epochs  = {args.epochs}")
-    print(f"[trainx] seed    = {args.seed}")
-    print(f"[trainx] project = {args.project}")
-    print(f"[trainx] name    = {args.name}")
-    print(f"[trainx] output  = {run_dir}")
+    print(
+        f"[trainx] data={data_path}"
+    )
+
+    print(
+        f"[trainx] weights={weights_path}"
+    )
+
+    print(
+        f"[trainx] img={args.img}"
+    )
+
+    print(
+        f"[trainx] batch={args.batch}"
+    )
+
+    print(
+        f"[trainx] epochs={args.epochs}"
+    )
+
+    print(
+        f"[trainx] seed={args.seed}"
+    )
+
+    print(
+        f"[trainx] project={args.project}"
+    )
+
+    print(
+        f"[trainx] name={args.name}"
+    )
+
+    print(
+        f"[trainx] output={run_dir}"
+    )
 
     print("=" * 70)
     print()
 
     # ---------------------------------------------------------
-    # 6. Load model
+    # 6. Load YOLO model
     # ---------------------------------------------------------
+
+    print(
+        "[trainx] Loading YOLO model..."
+    )
 
     model = YOLO(
         str(weights_path)
     )
 
     # ---------------------------------------------------------
-    # 7. Train
+    # 7. Start training
     # ---------------------------------------------------------
+
+    print(
+        "[trainx] Starting model.train()..."
+    )
 
     model.train(
         data=str(data_path),
@@ -473,7 +529,7 @@ def main():
     )
 
     # ---------------------------------------------------------
-    # 8. Find Ultralytics output directory
+    # 8. Determine actual Ultralytics output directory
     # ---------------------------------------------------------
 
     source_run_dir = Path(
@@ -482,44 +538,47 @@ def main():
 
     print()
     print("=" * 70)
-    print("[trainx] TRAINING COMPLETED")
+    print("YOLO training completed")
     print("=" * 70)
 
     print(
-        f"[trainx] Ultralytics save directory:"
-        f" {source_run_dir}"
+        f"[trainx] Ultralytics output: {source_run_dir}"
     )
 
     print(
-        f"[trainx] TrainX run directory:"
-        f" {run_dir}"
+        f"[trainx] TrainX output:      {run_dir}"
     )
 
     print("=" * 70)
     print()
 
     # ---------------------------------------------------------
-    # 9. Define expected artifacts
+    # 9. Locate generated artifacts
     # ---------------------------------------------------------
 
-    source_weights_dir = (
-        source_run_dir / "weights"
+    source_weights = (
+        source_run_dir
+        / "weights"
     )
 
     source_best = (
-        source_weights_dir / "best.pt"
+        source_weights
+        / "best.pt"
     )
 
     source_last = (
-        source_weights_dir / "last.pt"
+        source_weights
+        / "last.pt"
     )
 
     source_results = (
-        source_run_dir / "results.csv"
+        source_run_dir
+        / "results.csv"
     )
 
     target_weights = (
-        run_dir / "weights"
+        run_dir
+        / "weights"
     )
 
     target_weights.mkdir(
@@ -528,15 +587,18 @@ def main():
     )
 
     target_best = (
-        target_weights / "best.pt"
+        target_weights
+        / "best.pt"
     )
 
     target_last = (
-        target_weights / "last.pt"
+        target_weights
+        / "last.pt"
     )
 
     target_results = (
-        run_dir / "results.csv"
+        run_dir
+        / "results.csv"
     )
 
     # ---------------------------------------------------------
@@ -546,23 +608,31 @@ def main():
     if not source_best.exists():
 
         raise RuntimeError(
-            "Training completed but best.pt was not found at "
-            f"{source_best}"
+            "Training completed but best.pt was not found.\n"
+            f"Expected location: {source_best}"
         )
 
+    print(
+        f"[trainx] Found best.pt: {source_best}"
+    )
+
     # ---------------------------------------------------------
-    # 11. Validate Ultralytics results.csv
+    # 11. Validate results.csv
     # ---------------------------------------------------------
 
     if not source_results.exists():
 
         raise RuntimeError(
-            "Training completed but results.csv was not "
-            f"found at {source_results}"
+            "Training completed but results.csv was not found.\n"
+            f"Expected location: {source_results}"
         )
 
+    print(
+        f"[trainx] Found results.csv: {source_results}"
+    )
+
     # ---------------------------------------------------------
-    # 12. Handle best.pt
+    # 12. Copy best.pt only when necessary
     # ---------------------------------------------------------
 
     copy_if_needed(
@@ -571,12 +641,11 @@ def main():
     )
 
     # ---------------------------------------------------------
-    # 13. Convert results.csv for TrainX
+    # 13. Convert Ultralytics results.csv
     # ---------------------------------------------------------
 
     print(
-        "[trainx] Converting Ultralytics results.csv "
-        "to TrainX format..."
+        "[trainx] Creating TrainX results.csv..."
     )
 
     make_trainx_results(
@@ -584,14 +653,22 @@ def main():
         target_results,
     )
 
+    print(
+        f"[trainx] TrainX results.csv created: "
+        f"{target_results}"
+    )
+
     # ---------------------------------------------------------
-    # 14. Handle last.pt
+    # 14. Handle last.pt safely
     #
-    # IMPORTANT:
-    # This fixes the original SameFileError.
+    # This is the important fix for the previous error.
     # ---------------------------------------------------------
 
     if source_last.exists():
+
+        print(
+            f"[trainx] Found last.pt: {source_last}"
+        )
 
         copy_if_needed(
             source_last,
@@ -601,52 +678,59 @@ def main():
     else:
 
         print(
-            "[trainx] WARNING: last.pt was not produced "
-            "by Ultralytics."
+            "[trainx] WARNING: last.pt was not produced."
         )
 
     # ---------------------------------------------------------
     # 15. Final artifact validation
     # ---------------------------------------------------------
 
+    print()
+    print(
+        "[trainx] Validating final artifacts..."
+    )
+
     if not target_best.exists():
 
         raise RuntimeError(
-            f"TrainX artifact validation failed: "
-            f"best.pt is missing at {target_best}"
+            "Final artifact validation failed: "
+            f"best.pt does not exist at {target_best}"
         )
 
     if not target_results.exists():
 
         raise RuntimeError(
-            f"TrainX artifact validation failed: "
-            f"results.csv is missing at {target_results}"
+            "Final artifact validation failed: "
+            f"results.csv does not exist at {target_results}"
         )
 
-    # last.pt is optional, so we only report whether it exists.
+    # last.pt is optional.
+    last_status = (
+        "present"
+        if target_last.exists()
+        else "not present"
+    )
 
     # ---------------------------------------------------------
-    # 16. Success
+    # 16. Print final success
     # ---------------------------------------------------------
 
     print()
     print("=" * 70)
-    print("[trainx] SUCCESS")
+    print("TRAINX YOLO TRAINING SUCCESS")
     print("=" * 70)
 
     print(
-        f"[trainx] best.pt    = {target_best}"
+        f"[trainx] best.pt     : {target_best}"
     )
 
     print(
-        f"[trainx] results.csv = {target_results}"
+        f"[trainx] results.csv : {target_results}"
     )
 
-    if target_last.exists():
-
-        print(
-            f"[trainx] last.pt    = {target_last}"
-        )
+    print(
+        f"[trainx] last.pt     : {last_status}"
+    )
 
     print("=" * 70)
     print()
