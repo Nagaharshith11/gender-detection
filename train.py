@@ -1,4 +1,3 @@
-```python
 """
 TrainX training entry point for a YOLO detector.
 
@@ -742,4 +741,3 @@ if __name__ == "__main__":
     raise SystemExit(
         main()
     )
-```
