@@ -1,0 +1,15 @@
+# TrainX house rule: weights and datasets are NEVER committed to git.
+# Binaries are versioned by DVC in MinIO; git holds code and .dvc pointers.
+*.pt
+*.pth
+*.onnx
+*.tflite
+*_openvino_model/
+runs/
+datasets/
+mlruns/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

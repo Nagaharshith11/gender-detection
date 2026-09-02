@@ -1,0 +1,12 @@
+# TrainX shared training environment dependencies.
+# The orchestrator does not pip-install this file automatically.
+# Coordinate package installation with the MLOps administrator if needed.
+ultralytics>=8.3,<9
+torch>=2.0
+torchvision>=0.15
+numpy
+pandas
+pyyaml
+opencv-python
+onnx
+onnxruntime
